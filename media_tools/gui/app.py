@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
         status = QStatusBar()
+        status.setSizeGripEnabled(False)  # the corner resize triangle; edges resize fine
         # Match the gaps the rest of the UI keeps from the window edges.
         status.setContentsMargins(9, 2, 9, 6)
         self._theme_btn = QPushButton()
