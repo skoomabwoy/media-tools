@@ -1,0 +1,68 @@
+[project]
+name = "media-tools"
+version = "0.1.0"
+description = "Unified GUI for the user's media workflow: download, inspect, convert, separate stems."
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "PySide6>=6.7",
+
+    # PyTorch + ROCm (pinned; resolved via the index below)
+    "torch==2.9.1",
+    "torchaudio==2.9.1",
+    "pytorch-triton-rocm==3.5.1 ; sys_platform == 'linux'",
+
+    # MSST inference deps (mirrors what was proven to work in ~/Scripts/Music-Source-Separation-Training)
+    "numpy<2",
+    "pandas",
+    "scipy",
+    "soundfile",
+    "ml_collections",
+    "tqdm",
+    "segmentation_models_pytorch==0.3.3",
+    "timm==0.9.2",
+    "audiomentations==0.24.0",
+    "pedalboard~=0.8.1",
+    "omegaconf==2.2.3",
+    "beartype==0.14.1",
+    "rotary_embedding_torch==0.3.5",
+    "einops==0.8.1",
+    "librosa",
+    "demucs==4.0.0",
+    "transformers~=4.35.0",
+    "torchmetrics==0.11.4",
+    "spafe==0.3.2",
+    "protobuf==3.20.3",
+    "torch_audiomentations",
+    "asteroid==0.7.0",
+    "auraloss",
+    "torchseg",
+    "huggingface-hub>=0.23.0",
+    "torch_log_wmse>=0.3.1",
+    "loralib",
+    "matplotlib",
+    "hyper_connections==0.1.11",
+    "pytorch_lightning",
+    "pyloudnorm",
+    "pyyaml",
+    "wandb",
+    "requests",
+    "setuptools<81",  # librosa imports pkg_resources which was removed in setuptools 81
+    "psutil",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-rocm" }
+torchaudio = { index = "pytorch-rocm" }
+pytorch-triton-rocm = { index = "pytorch-rocm" }
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["media_tools"]
