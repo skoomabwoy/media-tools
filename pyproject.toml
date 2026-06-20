@@ -6,10 +6,16 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "PySide6>=6.7",
 
-    # PyTorch + ROCm (pinned; resolved via the index below)
+    # PyTorch — the matching build (CUDA / ROCm / CPU) is chosen per machine at
+    # install time by uv's torch-backend = "auto" (see [tool.uv] below). The
+    # accelerator-specific triton is pulled in automatically by that backend.
     "torch==2.9.1",
     "torchaudio==2.9.1",
-    "pytorch-triton-rocm==3.5.1 ; sys_platform == 'linux'",
+
+    # Bundled external tools, so nothing has to be installed by hand:
+    # yt-dlp is invoked as a module; static-ffmpeg supplies ffmpeg + ffprobe.
+    "yt-dlp",
+    "static-ffmpeg",
 
     # MSST inference deps (mirrors what was proven to work in ~/Scripts/Music-Source-Separation-Training)
     "numpy<2",
@@ -50,15 +56,11 @@ dependencies = [
     "psutil",
 ]
 
-[tool.uv.sources]
-torch = { index = "pytorch-rocm" }
-torchaudio = { index = "pytorch-rocm" }
-pytorch-triton-rocm = { index = "pytorch-rocm" }
-
-[[tool.uv.index]]
-name = "pytorch-rocm"
-url = "https://download.pytorch.org/whl/rocm6.3"
-explicit = true
+[tool.uv]
+# Detect the machine's accelerator at install time and pull the matching
+# PyTorch wheels: CUDA on NVIDIA, ROCm on AMD/Linux, CPU otherwise. This is what
+# makes `uv sync` work unchanged on any GPU/CPU and on Windows.
+torch-backend = "auto"
 
 [build-system]
 requires = ["hatchling"]

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -22,7 +23,7 @@ from media_tools.backend.format_match import suggest_separation_format
 from media_tools.backend.info import MediaInfo
 from media_tools.backend.separate import run_separation
 from media_tools.core import config
-from media_tools.core.devices import device_options
+from media_tools.core.devices import detect_cuda_devices, device_options
 from media_tools.core.options import (
     OUTPUT_FORMATS,
     SeparateOpts,
@@ -39,6 +40,7 @@ class SeparateTab(QWidget):
         super().__init__(parent)
         self._log = log_panel
         self._thread = None
+        self._detect_handle = None
         self._build_ui()
         self._update_instrumental_state()
 
@@ -110,7 +112,19 @@ class SeparateTab(QWidget):
             cfg.get("device", "auto"),
         )
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
-        form.addRow("Device:", self.device_combo)
+
+        self.redetect_btn = QPushButton()
+        self.redetect_btn.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self.redetect_btn.setToolTip("Re-scan for compute devices")
+        self.redetect_btn.setFixedWidth(32)
+        self.redetect_btn.clicked.connect(self._redetect_devices)
+
+        device_row = QHBoxLayout()
+        device_row.addWidget(self.device_combo, 1)
+        device_row.addWidget(self.redetect_btn)
+        form.addRow("Device:", wrap(device_row))
 
         root.addLayout(form)
 
@@ -174,6 +188,36 @@ class SeparateTab(QWidget):
     def _on_device_changed(self, *args) -> None:
         # Persist the user's device choice so it sticks across launches.
         config.update(device=self.device_combo.currentData())
+
+    def _redetect_devices(self) -> None:
+        """Re-scan for compute devices in the background and refresh the list."""
+        if self._detect_handle is not None:
+            return  # a scan is already running
+        self.redetect_btn.setEnabled(False)
+        self.device_combo.setEnabled(False)
+        self._log.log("Scanning for compute devices…")
+        self._detect_handle = start_worker(
+            lambda _opts, _log, cancel: detect_cuda_devices(cancel=cancel),
+            None,
+            on_log=lambda _s: None,
+            on_done_ok=self._on_redetect_done,
+            on_done_err=lambda _msg: self._on_redetect_done(None),
+        )
+
+    def _on_redetect_done(self, result) -> None:
+        self._detect_handle = None
+        self.redetect_btn.setEnabled(True)
+        self.device_combo.setEnabled(True)
+        if not isinstance(result, list):
+            self._log.log("Device scan failed; keeping the current list.")
+            return
+        config.update(cuda_devices=result)
+        # Keep the current selection if it survived the rescan, else fall back to
+        # Auto. Persist whatever ended up selected so config matches the UI.
+        current = self.device_combo.currentData()
+        self._populate_devices(result, current)
+        config.update(device=self.device_combo.currentData())
+        self._log.log(f"Found {len(result)} GPU(s).")
 
     def _pick_input(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from media_tools.core.cancel import Cancelled, CancelToken
 from media_tools.core.options import DownloadOpts
 from media_tools.core.text import LogFn
+from media_tools.core.tools import require_tool
 
 
 # Containers that can carry embedded thumbnails (yt-dlp/ffmpeg constraint).
@@ -16,7 +17,9 @@ _THUMBNAIL_VIDEO_CONTAINERS = {"mp4", "mkv"}
 
 def _build_yt_dlp_args(opts: DownloadOpts) -> list[str]:
     args: list[str] = [
-        "yt-dlp",
+        # Invoke yt-dlp as a module via the current interpreter, so the bundled
+        # dependency is used regardless of whether the venv is on PATH.
+        sys.executable, "-m", "yt_dlp",
         "--no-playlist",
         "--newline",  # one line per progress update, easier to stream
         "-P", str(opts.output_dir),
@@ -57,8 +60,9 @@ def _build_yt_dlp_args(opts: DownloadOpts) -> list[str]:
 def run_download(opts: DownloadOpts, log: LogFn, cancel: CancelToken) -> Path:
     if not opts.url.strip():
         raise ValueError("URL is empty.")
-    if shutil.which("yt-dlp") is None:
-        raise RuntimeError("yt-dlp not found on PATH. Install it with `pacman -S yt-dlp`.")
+    # yt-dlp needs ffmpeg for extraction/merge/embedding; resolving it here also
+    # primes PATH (via the bundled fallback) so the yt-dlp child process finds it.
+    require_tool("ffmpeg")
     opts.output_dir.mkdir(parents=True, exist_ok=True)
 
     argv = _build_yt_dlp_args(opts)

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -18,12 +20,32 @@ from PySide6.QtWidgets import (
 
 from media_tools.core import config
 from media_tools.core.devices import detect_cuda_devices, device_options
+from media_tools.core.theme import DEFAULT_THEME, apply_theme
 from media_tools.gui.log_panel import LogPanel
 from media_tools.gui.tabs.convert import ConvertTab
 from media_tools.gui.tabs.download import DownloadTab
 from media_tools.gui.tabs.separate import SeparateTab
 from media_tools.gui.widgets.sys_meters import SysMeters
 from media_tools.gui.worker import start_worker, stop_all_workers
+
+
+def _contrast_icon(size: int = 16) -> QIcon:
+    """A half-filled circle (the universal contrast/theme glyph), painted so it
+    needs no font or emoji support and stays visible in both light and dark."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    rect = QRect(1, 1, size - 2, size - 2)
+    gray = QColor(128, 128, 128)
+    painter.setPen(gray)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawEllipse(rect)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(gray)
+    painter.drawChord(rect, 90 * 16, 180 * 16)  # fill the left half
+    painter.end()
+    return QIcon(pm)
 
 
 class MainWindow(QMainWindow):
@@ -63,33 +85,40 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
         status = QStatusBar()
-        self._device_btn = QPushButton("Compute device")
-        self._device_btn.setToolTip("Choose the default device for stem separation")
-        self._device_btn.clicked.connect(self._choose_device)
-        status.addWidget(self._device_btn)          # bottom-left
-        status.addPermanentWidget(SysMeters())      # bottom-right
+        # Match the gaps the rest of the UI keeps from the window edges.
+        status.setContentsMargins(9, 2, 9, 6)
+        self._theme_btn = QPushButton()
+        self._theme_btn.setIcon(_contrast_icon())
+        self._theme_btn.setToolTip("Toggle light / dark theme")
+        self._theme_btn.setFixedWidth(32)
+        self._theme_btn.clicked.connect(self._toggle_theme)
+        status.addWidget(self._theme_btn)            # bottom-left
+        status.addPermanentWidget(SysMeters())       # bottom-right
         self.setStatusBar(status)
 
         self._detect_handle = None
         self._closing = False
         self._maybe_detect_devices()
 
+    def _toggle_theme(self) -> None:
+        new = "dark" if config.load().get("theme", DEFAULT_THEME) == "light" else "light"
+        apply_theme(QApplication.instance(), new)
+        config.update(theme=new)
+
     def _maybe_detect_devices(self) -> None:
-        """On first run, discover GPUs in the background, then prompt for a default."""
+        """On first run, discover GPUs in the background, then prompt for a default.
+
+        After that, the cached device list and the Separate tab's dropdown handle
+        everything; the dropdown persists any change as the new default.
+        """
         if "cuda_devices" in config.load():
             return  # already detected on a previous run
-        self._start_detection(prompt=True)
-
-    def _start_detection(self, prompt: bool) -> None:
-        if self._detect_handle is not None:
-            return  # detection already running
-        self._device_btn.setEnabled(False)
         self._detect_handle = start_worker(
             lambda _opts, _log, cancel: detect_cuda_devices(cancel=cancel),
             None,
             on_log=lambda _s: None,
-            on_done_ok=lambda result: self._on_devices_detected(result, prompt),
-            on_done_err=lambda _msg: self._on_devices_detected(None, prompt),
+            on_done_ok=self._on_devices_detected,
+            on_done_err=lambda _msg: self._on_devices_detected(None),
         )
 
     def _active_task(self) -> str | None:
@@ -130,30 +159,14 @@ class MainWindow(QMainWindow):
             os._exit(0)
         super().closeEvent(event)
 
-    def _on_devices_detected(self, result, prompt: bool) -> None:
+    def _on_devices_detected(self, result) -> None:
         self._detect_handle = None
-        self._device_btn.setEnabled(True)
         if self._closing:
             return  # window is going away; don't pop a dialog during shutdown
         cuda_names = result if isinstance(result, list) else []
         # Cache only a definitive result; on detection failure we retry next launch.
         if result is not None:
             config.update(cuda_devices=cuda_names)
-        if prompt:
-            self._apply_device_choice(cuda_names)
-
-    def _choose_device(self) -> None:
-        """Status-bar button: let the user (re)pick the default device."""
-        if self._detect_handle is not None:
-            return  # detection in progress; button is disabled anyway
-        cached = config.load().get("cuda_devices")
-        if isinstance(cached, list):
-            self._apply_device_choice(cached)
-        else:
-            # First-run detection failed earlier; try again, then prompt.
-            self._start_detection(prompt=True)
-
-    def _apply_device_choice(self, cuda_names: list[str]) -> None:
         selected = self._prompt_device_choice(cuda_names, config.load().get("device", "auto"))
         config.update(device=selected)
         self._separate_tab.set_device_options(cuda_names, selected)
@@ -170,7 +183,7 @@ class MainWindow(QMainWindow):
             self,
             "Select compute device",
             "Choose the default device for stem separation.\n"
-            "You can also change this anytime from this button.",
+            "You can change it anytime from the Device dropdown on the Separate tab.",
             labels,
             default,
             False,  # not editable

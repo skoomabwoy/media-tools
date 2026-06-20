@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 # Add vendored MSST to sys.path so its internal `from utils.*` imports work.
@@ -72,6 +73,44 @@ def _build_msst_args(
     return args
 
 
+def _stage_input(src: Path, dst: Path) -> None:
+    """Make `src` available at `dst` as cheaply as possible.
+
+    Hardlink (instant, same filesystem) → symlink → copy. The copy is the
+    universal fallback for Windows without admin rights (symlinks are privileged
+    there) or when the input lives on a different filesystem than the tempdir.
+    """
+    src = src.resolve()
+    for link in (os.link, os.symlink):
+        try:
+            link(src, dst)
+            return
+        except (OSError, NotImplementedError):
+            continue
+    shutil.copy2(src, dst)
+
+
+def _resolve_device(opts: SeparateOpts, log: LogFn) -> SeparateOpts:
+    """Fall back to Auto if the chosen GPU no longer exists.
+
+    The device list is cached at first run, so a later hardware change (a removed
+    or reordered GPU) could leave a stale `cuda:N` selection that torch can't
+    honour. Rather than crash mid-run, downgrade to Auto with a warning.
+    """
+    if not opts.device.startswith("cuda:"):
+        return opts
+    try:
+        import torch  # type: ignore
+        count = torch.cuda.device_count()
+    except Exception:
+        return opts  # can't verify here; let MSST decide
+    idx = int(opts.device.split(":", 1)[1])
+    if idx >= count:
+        log(f"Warning: {opts.device} is unavailable ({count} GPU(s) detected) — using Auto instead.")
+        return replace(opts, device="auto")
+    return opts
+
+
 def run_separation(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
     """Run a separation end-to-end. Returns the output directory the stems were written into.
 
@@ -95,8 +134,9 @@ def run_separation(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
         staged_output.mkdir()
 
         staged_file = staged_input / opts.input_file.name
-        os.symlink(opts.input_file.resolve(), staged_file)
+        _stage_input(opts.input_file, staged_file)
 
+        opts = _resolve_device(opts, log)
         msst_args = _build_msst_args(opts, config_path, ckpt_path, staged_input, staged_output)
         log("Invoking MSST inference with args: " + ", ".join(f"{k}={v}" for k, v in msst_args.items()))
 

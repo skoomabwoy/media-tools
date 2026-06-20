@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 
 from media_tools.core.text import LogFn, format_duration
@@ -71,12 +71,10 @@ def _pick_best_audio(formats: list[dict]) -> dict | None:
 def probe_url(url: str, log: LogFn) -> URLInfo:
     if not url.strip():
         raise ValueError("URL is empty.")
-    if shutil.which("yt-dlp") is None:
-        raise RuntimeError("yt-dlp not found on PATH. Install it with `pacman -S yt-dlp`.")
 
     log(f"Probing {url} …")
     result = subprocess.run(
-        ["yt-dlp", "-J", "--no-playlist", "--skip-download", url],
+        [sys.executable, "-m", "yt_dlp", "-J", "--no-playlist", "--skip-download", url],
         capture_output=True,
         text=True,
     )

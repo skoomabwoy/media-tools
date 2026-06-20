@@ -7,20 +7,31 @@ separate audio into stems.
   quality, SponsorBlock, and cookie options. Probes the source and recommends
   settings that match it.
 - **Separate** — split a track into stems (vocals / instrumental / 4-stem,
-  plus dereverb & denoise) using RoFormer models, GPU-accelerated.
+  plus dereverb & denoise) using RoFormer models, GPU-accelerated where possible.
 - **Convert** — transcode between MP3 / FLAC / WAV / OGG / Opus / AAC / AIFF,
   preserving album art where the target format supports it.
-- File info + live CPU / GPU / VRAM meters throughout.
+- File info, live CPU / GPU / VRAM meters, and a light/dark theme toggle.
 
 ## Requirements
 
-This release targets **Linux with an AMD GPU (ROCm)**.
-
-- Python 3.11
+- **Python 3.11**
 - [uv](https://docs.astral.sh/uv/)
-- An AMD GPU with a working ROCm stack (torch is pinned to the ROCm 6.3 wheels)
-- `ffmpeg` / `ffprobe` and `yt-dlp` available on `PATH`
-  (e.g. `sudo pacman -S ffmpeg yt-dlp`)
+
+That's it — `ffmpeg`/`ffprobe` and `yt-dlp` are bundled (installed into the
+virtualenv), so you don't need to install them separately.
+
+### GPU acceleration
+
+`uv sync` automatically picks the right PyTorch build for your machine:
+
+| | NVIDIA | AMD | No GPU |
+|-----------|--------|------------------|--------|
+| **Linux** | CUDA   | ROCm             | CPU    |
+| **Windows** | CUDA | CPU (no ROCm)    | CPU    |
+
+Separation runs on the GPU when one is available and falls back to CPU
+otherwise (slower, but works everywhere). Note: PyTorch has no ROCm build for
+Windows, so an AMD GPU on Windows runs on CPU.
 
 ## Setup
 
@@ -28,33 +39,25 @@ This release targets **Linux with an AMD GPU (ROCm)**.
 uv sync
 ```
 
-This creates `.venv/` with PyTorch (ROCm) and all dependencies. The separation
+This creates `.venv/` with PyTorch and all dependencies (a few GB). Separation
 model weights download automatically on first use and are cached under
-`~/.cache/media-tools/`.
+`~/.cache/media-tools/` (Linux/macOS) or `%USERPROFILE%\.cache\media-tools\`
+(Windows).
 
 ## Run
 
-```sh
-./run.sh
-```
-
-or `uv run python main.py`.
-
-To add it to your application menu, edit the paths in `media-tools.desktop` if
-the repo isn't at the default location, then:
-
-```sh
-cp media-tools.desktop ~/.local/share/applications/
-```
+- **Linux/macOS:** `./run-linux.sh` (or `uv run python main.py`)
+- **Windows:** double-click `run-win.bat` (or `uv run python main.py`)
 
 On first launch the app detects your GPU(s) and asks which device to use as the
-default for separation; you can change it anytime via the **Compute device**
-button in the bottom-left.
+default for separation; you can re-scan anytime with the **↻** button next to
+the device dropdown on the Separate tab. The light/dark toggle is in the
+bottom-left of the status bar.
 
 ## Configuration
 
-Your device choice is stored in `$XDG_CONFIG_HOME/media-tools/config.json`
-(usually `~/.config/media-tools/config.json`).
+Your device and theme choices are stored in `~/.config/media-tools/config.json`
+(`$XDG_CONFIG_HOME` is honored if set). Delete it to re-run first-time setup.
 
 ## Credits
 

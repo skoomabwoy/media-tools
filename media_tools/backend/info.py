@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from media_tools.core.text import format_duration
+from media_tools.core.tools import require_tool
 
 
 @dataclass
@@ -65,6 +66,7 @@ def _bit_depth_from_codec(sample_fmt: str | None, codec: str) -> int | None:
 
 def probe(path: Path) -> MediaInfo:
     """Run ffprobe on `path` and return a parsed MediaInfo."""
+    require_tool("ffprobe")
     if not path.exists():
         raise FileNotFoundError(path)
 

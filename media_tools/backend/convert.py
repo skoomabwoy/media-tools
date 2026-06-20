@@ -6,6 +6,7 @@ from pathlib import Path
 from media_tools.core.cancel import Cancelled, CancelToken
 from media_tools.core.options import ConvertOpts
 from media_tools.core.text import LineSplitter, LogFn
+from media_tools.core.tools import require_tool
 
 
 def _codec_and_quality_flags(opts: ConvertOpts) -> list[str]:
@@ -66,6 +67,7 @@ def _build_ffmpeg_args(opts: ConvertOpts) -> list[str]:
 
 
 def run_conversion(opts: ConvertOpts, log: LogFn, cancel: CancelToken) -> Path:
+    require_tool("ffmpeg")
     if not opts.input_file.exists():
         raise FileNotFoundError(opts.input_file)
     if opts.output_file.resolve() == opts.input_file.resolve():
