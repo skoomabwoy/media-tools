@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -11,12 +11,18 @@ CATEGORY_UTILITY = "Utility (post-processing)"
 
 @dataclass(frozen=True)
 class ModelSpec:
+    # Shown to the user: task + tier only, no engine name (see `tooltip` for that).
     label: str
     category: str
-    model_type: str
-    config_url: str
-    ckpt_url: str
-    kind: str  # "vocals" | "4stem" | "dereverb" | "denoise"
+    kind: str  # "vocals" | "4stem" | "6stem" | "dereverb" | "denoise"
+    engine: str = "msst"  # "msst" (roformer) | "demucs"
+    tooltip: str = ""  # engine / quality detail for the hover tooltip
+    # MSST engine:
+    model_type: str = ""
+    config_url: str = ""
+    ckpt_url: str = ""
+    # demucs engine:
+    demucs_model: str = ""
 
     @property
     def config_filename(self) -> str:
@@ -26,64 +32,79 @@ class ModelSpec:
     def ckpt_filename(self) -> str:
         return self.ckpt_url.rsplit("/", 1)[-1]
 
-    @property
-    def supports_instrumental(self) -> bool:
-        return self.kind == "vocals"
 
-
+# Curated: one option per task, plus a lighter tier where the speed gap is real.
+# The engine (demucs vs roformer) is an implementation detail kept out of labels.
 MODELS: list[ModelSpec] = [
-    # --- Full stem separation ---
+    # --- Full stem separation (demucs) ---
     ModelSpec(
-        label="4 stems (vocals / drums / bass / other) — BS-RoFormer",
+        label="Best quality · slow",
         category=CATEGORY_FULL,
-        model_type="bs_roformer",
-        config_url="https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.12/config_bs_roformer_384_8_2_485100.yaml",
-        ckpt_url="https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v1.0.12/model_bs_roformer_ep_17_sdr_9.6568.ckpt",
         kind="4stem",
+        engine="demucs",
+        demucs_model="htdemucs_ft",
+        tooltip="Demucs htdemucs_ft — fine-tuned 4-stem (vocals/drums/bass/other). "
+                "Averages four models, so ~4× slower.",
+    ),
+    ModelSpec(
+        label="Good quality · fast",
+        category=CATEGORY_FULL,
+        kind="4stem",
+        engine="demucs",
+        demucs_model="htdemucs",
+        tooltip="Demucs htdemucs — 4-stem (vocals/drums/bass/other), single model. Much faster.",
+    ),
+    ModelSpec(
+        label="6 stems (+ guitar & piano) · fast",
+        category=CATEGORY_FULL,
+        kind="6stem",
+        engine="demucs",
+        demucs_model="htdemucs_6s",
+        tooltip="Demucs htdemucs_6s — adds guitar and piano to the usual four stems.",
     ),
 
-    # --- Vocals isolation ---
+    # --- Vocals isolation (Mel-Band RoFormer via MSST) ---
     ModelSpec(
-        label="Best quality — Mel-RoFormer (KimberleyJensen, SDR 10.98)",
+        label="Best quality · slow",
         category=CATEGORY_VOCALS,
+        kind="vocals",
+        engine="msst",
         model_type="mel_band_roformer",
         config_url="https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/KimberleyJensen/config_vocals_mel_band_roformer_kj.yaml",
         ckpt_url="https://huggingface.co/KimberleyJSN/melbandroformer/resolve/main/MelBandRoformer.ckpt",
-        kind="vocals",
+        tooltip="Mel-Band RoFormer (KimberleyJensen), SDR 10.98. Outputs vocals + instrumental.",
     ),
     ModelSpec(
-        label="Sharper — BS-RoFormer (viperx, SDR 10.87)",
+        label="Good quality · fast",
         category=CATEGORY_VOCALS,
-        model_type="bs_roformer",
-        config_url="https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/viperx/model_bs_roformer_ep_317_sdr_12.9755.yaml",
-        ckpt_url="https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_bs_roformer_ep_317_sdr_12.9755.ckpt",
         kind="vocals",
-    ),
-    ModelSpec(
-        label="Fast — Mel-RoFormer (viperx, SDR 9.67)",
-        category=CATEGORY_VOCALS,
+        engine="msst",
         model_type="mel_band_roformer",
         config_url="https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/main/configs/viperx/model_mel_band_roformer_ep_3005_sdr_11.4360.yaml",
         ckpt_url="https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/model_mel_band_roformer_ep_3005_sdr_11.4360.ckpt",
-        kind="vocals",
+        tooltip="Mel-Band RoFormer (viperx). Lighter; outputs vocals + instrumental.",
     ),
 
     # --- Utility ---
     ModelSpec(
-        label="Dereverb — Mel-RoFormer (anvuew)",
+        label="Remove reverb",
         category=CATEGORY_UTILITY,
+        kind="dereverb",
+        engine="msst",
         model_type="mel_band_roformer",
         config_url="https://huggingface.co/anvuew/dereverb_mel_band_roformer/resolve/main/dereverb_mel_band_roformer_anvuew.yaml",
         ckpt_url="https://huggingface.co/anvuew/dereverb_mel_band_roformer/resolve/main/dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt",
-        kind="dereverb",
+        tooltip="Mel-Band RoFormer dereverb (anvuew).",
     ),
     ModelSpec(
-        label="Denoise — Mel-RoFormer (aufr33)",
+        label="Remove noise",
         category=CATEGORY_UTILITY,
+        kind="denoise",
+        engine="msst",
         model_type="mel_band_roformer",
         config_url="https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.7/model_mel_band_roformer_denoise.yaml",
         ckpt_url="https://github.com/ZFTurbo/Music-Source-Separation-Training/releases/download/v.1.0.7/denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt",
-        kind="denoise",
+        tooltip="Mel-Band RoFormer denoise (aufr33).",
     ),
 ]
 
@@ -249,15 +270,21 @@ class ConvertOpts:
     sample_rate: str = ""      # "" = keep original
 
 
+# Optional extra-passes setting. Off by default — a single pass of the chosen
+# model already gives an excellent result; higher levels average more passes for
+# a small gain at a large time cost (diminishing returns).
+REFINEMENT_LEVELS = [
+    ("none", "None (recommended)"),
+    ("extra", "Extra"),
+    ("max", "Maximum"),
+]
+
+
 @dataclass
 class SeparateOpts:
     input_file: Path
     output_dir: Path
     model: ModelSpec
     output_format: str = "flac24"
-    extract_instrumental: bool = True
-    use_tta: bool = False
-    bigshifts: int = 1
+    refinement: str = "none"  # one of REFINEMENT_LEVELS keys
     device: str = "auto"
-    # Per-instance overrides; user does not edit these in v1.
-    extra_flags: list[str] = field(default_factory=list)

@@ -5,7 +5,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -13,7 +12,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -26,6 +24,7 @@ from media_tools.core import config
 from media_tools.core.devices import detect_cuda_devices, device_options
 from media_tools.core.options import (
     OUTPUT_FORMATS,
+    REFINEMENT_LEVELS,
     SeparateOpts,
     models_by_category,
 )
@@ -42,7 +41,6 @@ class SeparateTab(QWidget):
         self._thread = None
         self._detect_handle = None
         self._build_ui()
-        self._update_instrumental_state()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -79,7 +77,6 @@ class SeparateTab(QWidget):
         # Model dropdown grouped by category
         self.model_combo = QComboBox()
         self._build_model_combo(self.model_combo)
-        self.model_combo.currentIndexChanged.connect(self._update_instrumental_state)
         form.addRow("Model:", self.model_combo)
 
         # Output format
@@ -89,18 +86,16 @@ class SeparateTab(QWidget):
         self.format_combo.setCurrentIndex(self._format_index("flac24"))
         form.addRow("Output format:", self.format_combo)
 
-        # Toggles
-        self.instrumental_cb = QCheckBox("Extract instrumental (mix minus vocals)")
-        self.instrumental_cb.setChecked(True)
-        form.addRow("", self.instrumental_cb)
-
-        self.tta_cb = QCheckBox("Test-time augmentation (3× slower, cleaner)")
-        form.addRow("", self.tta_cb)
-
-        self.bigshifts_spin = QSpinBox()
-        self.bigshifts_spin.setRange(1, 16)
-        self.bigshifts_spin.setValue(1)
-        form.addRow("Big shifts:", self.bigshifts_spin)
+        # Optional extra passes (off by default; diminishing returns).
+        self.refinement_combo = QComboBox()
+        for key, label in REFINEMENT_LEVELS:
+            self.refinement_combo.addItem(label, key)
+        self.refinement_combo.setToolTip(
+            "Averages additional passes for a small quality gain. Much slower with "
+            "diminishing returns — the default single pass already gives an "
+            "excellent result."
+        )
+        form.addRow("Refinement:", self.refinement_combo)
 
         self.device_combo = QComboBox()
         # Populate from cached detection (if any); MainWindow refreshes this once
@@ -154,6 +149,8 @@ class SeparateTab(QWidget):
             for spec in items:
                 row = QStandardItem("  " + spec.label)
                 row.setData(spec, Qt.ItemDataRole.UserRole)
+                if spec.tooltip:
+                    row.setToolTip(spec.tooltip)
                 model.appendRow(row)
                 if first_selectable is None:
                     first_selectable = model.rowCount() - 1
@@ -245,15 +242,6 @@ class SeparateTab(QWidget):
         suggested = suggest_separation_format(info)
         self.format_combo.setCurrentIndex(self._format_index(suggested))
 
-    def _update_instrumental_state(self, *args) -> None:
-        spec = self._current_model()
-        if spec is None:
-            return
-        supports = spec.supports_instrumental
-        self.instrumental_cb.setEnabled(supports)
-        if not supports:
-            self.instrumental_cb.setChecked(False)
-
     def _collect_opts(self) -> SeparateOpts | None:
         input_path = self.input_edit.text().strip()
         output_path = self.output_edit.text().strip()
@@ -272,9 +260,7 @@ class SeparateTab(QWidget):
             output_dir=Path(output_path).expanduser(),
             model=spec,
             output_format=self.format_combo.currentData(),
-            extract_instrumental=self.instrumental_cb.isChecked(),
-            use_tta=self.tta_cb.isChecked(),
-            bigshifts=self.bigshifts_spin.value(),
+            refinement=self.refinement_combo.currentData(),
             device=self.device_combo.currentData(),
         )
 

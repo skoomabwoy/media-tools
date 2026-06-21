@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import Callable
 
 
@@ -49,3 +50,23 @@ class LineSplitter:
         if self._buf.strip():
             self._log(self._buf.rstrip())
         self._buf = ""
+
+
+class LineWriter(io.TextIOBase):
+    """A writable text stream that forwards complete lines to ``log``.
+
+    Adapts LineSplitter to the file-object interface that
+    ``contextlib.redirect_stdout`` / ``redirect_stderr`` expect, so a library's
+    stdout/tqdm output can be funnelled into the log panel.
+    """
+
+    def __init__(self, log: LogFn) -> None:
+        super().__init__()
+        self._splitter = LineSplitter(log)
+
+    def write(self, s: str) -> int:
+        self._splitter.feed(s)
+        return len(s)
+
+    def flush(self) -> None:
+        self._splitter.flush()

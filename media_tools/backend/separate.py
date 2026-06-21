@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import os
 import shutil
 import sys
@@ -16,7 +15,7 @@ if str(_MSST_ROOT) not in sys.path:
 
 from media_tools.core.cancel import CancelToken
 from media_tools.core.options import SeparateOpts
-from media_tools.core.text import LineSplitter, LogFn
+from media_tools.core.text import LineWriter, LogFn
 from media_tools.core.weights import ensure_model
 
 
@@ -27,21 +26,6 @@ _FORMAT_TO_FLAGS: dict[str, dict] = {
     "flac16": {"flac_file": True, "pcm_type": "PCM_16"},
     "flac24": {"flac_file": True, "pcm_type": "PCM_24"},
 }
-
-
-class _LineWriter(io.TextIOBase):
-    """Adapt LineSplitter to the file-like interface that redirect_stdout expects."""
-
-    def __init__(self, log: LogFn) -> None:
-        super().__init__()
-        self._splitter = LineSplitter(log)
-
-    def write(self, s: str) -> int:
-        self._splitter.feed(s)
-        return len(s)
-
-    def flush(self) -> None:
-        self._splitter.flush()
 
 
 def _build_msst_args(
@@ -60,12 +44,15 @@ def _build_msst_args(
     }
     args.update(_FORMAT_TO_FLAGS[opts.output_format])
 
-    if opts.model.supports_instrumental and opts.extract_instrumental:
+    # Vocals models always emit the instrumental stem alongside the vocals.
+    if opts.model.kind == "vocals":
         args["extract_instrumental"] = True
-    if opts.use_tta:
+    # Optional extra passes (off by default).
+    if opts.refinement == "extra":
+        args["bigshifts"] = 2
+    elif opts.refinement == "max":
+        args["bigshifts"] = 4
         args["use_tta"] = True
-    if opts.bigshifts > 1:
-        args["bigshifts"] = opts.bigshifts
     if opts.device == "cpu":
         args["force_cpu"] = True
     elif opts.device.startswith("cuda:"):
@@ -121,8 +108,17 @@ def run_separation(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
     if not opts.input_file.exists():
         raise FileNotFoundError(opts.input_file)
     opts.output_dir.mkdir(parents=True, exist_ok=True)
-
+    opts = _resolve_device(opts, log)
     log(f"Model: {opts.model.label}")
+
+    if opts.model.engine == "demucs":
+        from media_tools.backend.demucs_sep import run_demucs
+        return run_demucs(opts, log, cancel)
+
+    return _run_msst(opts, log, cancel)
+
+
+def _run_msst(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
     config_path, ckpt_path = ensure_model(opts.model, log, cancel)
 
     # MSST expects an input folder, not a file. Stage the file in a tempdir.
@@ -136,7 +132,6 @@ def run_separation(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
         staged_file = staged_input / opts.input_file.name
         _stage_input(opts.input_file, staged_file)
 
-        opts = _resolve_device(opts, log)
         msst_args = _build_msst_args(opts, config_path, ckpt_path, staged_input, staged_output)
         log("Invoking MSST inference with args: " + ", ".join(f"{k}={v}" for k, v in msst_args.items()))
 
@@ -146,7 +141,7 @@ def run_separation(opts: SeparateOpts, log: LogFn, cancel: CancelToken) -> Path:
         # Import lazily so module import isn't slowed down by torch boot.
         from inference import proc_folder  # type: ignore
 
-        writer = _LineWriter(log)
+        writer = LineWriter(log)
         with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
             proc_folder(msst_args)
         writer.flush()
