@@ -6,11 +6,11 @@ requires-python = ">=3.11,<3.12"
 dependencies = [
     "PySide6>=6.7",
 
-    # PyTorch — the matching build (CUDA / ROCm / CPU) is chosen per machine at
-    # install time by uv's torch-backend = "auto" (see [tool.uv] below). The
-    # accelerator-specific triton is pulled in automatically by that backend.
+    # PyTorch — the build is selected per-platform by [tool.uv.sources] below:
+    # ROCm on Linux (AMD), CUDA on Windows (NVIDIA), default/CPU elsewhere.
     "torch==2.9.1",
     "torchaudio==2.9.1",
+    "pytorch-triton-rocm==3.5.1 ; sys_platform == 'linux'",
 
     # Bundled external tools, so nothing has to be installed by hand:
     # yt-dlp is invoked as a module; static-ffmpeg supplies ffmpeg + ffprobe.
@@ -56,11 +56,32 @@ dependencies = [
     "psutil",
 ]
 
-[tool.uv]
-# Detect the machine's accelerator at install time and pull the matching
-# PyTorch wheels: CUDA on NVIDIA, ROCm on AMD/Linux, CPU otherwise. This is what
-# makes `uv sync` work unchanged on any GPU/CPU and on Windows.
-torch-backend = "auto"
+# Select the PyTorch build per platform. `torch-backend = "auto"` was unreliable
+# (it installed a CUDA build on an AMD/Linux machine, so the GPU went unused), so
+# we pin explicit indexes instead:
+#   Linux  -> ROCm 6.3  (AMD; the primary dev target)
+#   Windows-> CUDA 12.8 (NVIDIA friends; AMD-on-Windows falls back to CPU at runtime)
+#   macOS  -> default wheels (CPU/MPS)
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cuda", marker = "sys_platform == 'win32'" },
+]
+torchaudio = [
+    { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cuda", marker = "sys_platform == 'win32'" },
+]
+pytorch-triton-rocm = { index = "pytorch-rocm" }
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
