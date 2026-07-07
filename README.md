@@ -15,10 +15,17 @@ separate audio into stems.
 
 ---
 
-## Windows quick start
+## Linux / macOS
 
-You do **not** need to install Python, ffmpeg, or yt-dlp yourself — the only
-thing to install is **uv**, which sets up everything else.
+```sh
+uv sync          # one-time setup
+./run-linux.sh   # or: uv run python main.py
+```
+
+Separation model weights download automatically on first use and are cached
+under `~/.cache/media-tools/`.
+
+## Windows
 
 ### 1. Install uv
 
@@ -52,7 +59,7 @@ Open the extracted folder in File Explorer, click the address bar, type `cmd`,
 and press Enter — a terminal opens in that folder. Then run:
 
 ```sh
-uv sync
+uv sync --python 3.11
 ```
 
 This downloads Python, PyTorch (the right build for your GPU), and everything
@@ -75,6 +82,8 @@ downloads the model weights / ffmpeg once, so that run is slower than usual.
 - **Python 3.11** (uv installs this for you automatically)
 - [uv](https://docs.astral.sh/uv/)
 
+- Microsoft Visual C++ 14.0 or greater
+
 `ffmpeg`/`ffprobe` and `yt-dlp` are bundled into the virtualenv, so there's
 nothing else to install by hand.
 
@@ -92,16 +101,6 @@ Separation uses the GPU when one is available and falls back to CPU otherwise
 (slower, but works everywhere). Linux is wired for **AMD/ROCm**; a Linux machine
 with an NVIDIA card would need the CUDA index instead (edit `[tool.uv.sources]`
 in `pyproject.toml`).
-
-## Linux / macOS
-
-```sh
-uv sync          # one-time setup
-./run-linux.sh   # or: uv run python main.py
-```
-
-Separation model weights download automatically on first use and are cached
-under `~/.cache/media-tools/`.
 
 ## Using the app
 
