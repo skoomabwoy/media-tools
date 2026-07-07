@@ -53,7 +53,7 @@ Then **close and reopen** PowerShell so it picks up `uv`.
 (If you have Git installed you can instead run
 `git clone https://github.com/skoomabwoy/media-tools.git`.)
 
-### 3. Install dependencies (one time)
+### 3. Install dependencies
 
 Open the extracted folder in File Explorer, click the address bar, type `cmd`,
 and press Enter — a terminal opens in that folder. Then run:
@@ -79,10 +79,8 @@ downloads the model weights / ffmpeg once, so that run is slower than usual.
 
 ## Requirements
 
-- **Python 3.11** (uv installs this for you automatically)
 - [uv](https://docs.astral.sh/uv/)
-
-- Microsoft Visual C++ 14.0 or greater
+- [Microsoft Visual C++ 14.0 or greater](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
 
 `ffmpeg`/`ffprobe` and `yt-dlp` are bundled into the virtualenv, so there's
 nothing else to install by hand.
